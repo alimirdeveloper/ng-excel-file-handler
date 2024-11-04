@@ -1,0 +1,49 @@
+<div class="main-layout">
+  <excel-file-handler [headers]="excelHeaders"
+    templateName="exceltmp"
+    (onDataUploaded)="onDataUploaded($event)"
+    sheetName="testSheet" />
+
+  <div class="table-layout">
+    <table>
+      @if(uploadedData() && uploadedData().length){
+      <tr>
+        @for (header of excelHeaders; track $index) {
+        <th>
+          <span>{{header.name}}</span>
+        </th>
+        }
+      </tr>
+
+      @for (row of uploadedData(); track $index) {
+      <tr>
+        @for (header of excelHeaders; track $index) {
+        <td>
+          @switch (header.type) {
+          @case ('text') {
+          <span>{{row[header.name]}}</span>
+          }
+          @case ('number') {
+          <span>{{row[header.name]}}</span>
+          }
+          @case ('Percentage') {
+          <span>{{row[header.name] | percent}}</span>
+          }
+          @case ('drop-down') {
+
+          <span>{{row[header.name]}}</span>
+          }
+          }
+        </td>
+        }
+      </tr>
+      }
+      @empty {
+      ... Data is not uploaded
+      }
+
+      }
+    </table>
+
+  </div>
+</div>

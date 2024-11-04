@@ -1,0 +1,98 @@
+.excel-import-layout {
+    --excel-green-color: #217346;
+    --excel-blue-color: darkslateblue;
+    padding: 8px;
+    border-radius: 4px;
+    border: 2px dashed silver !important;
+    width: 100%;
+
+    display: flex;
+    .width-50 {
+        gap: 12px;
+        width: 50%;
+        align-items: center;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        .tip {
+            text-align: center;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        padding: 4px;
+        .download {
+            
+            border-color: var(--excel-green-color);
+            background: transparent;
+            border-radius: 8px;
+            &:hover {
+                background: var(--excel-green-color);
+                color: #fff;
+                .green {
+                    fill: #fff !important;
+                }
+            }
+            .button-layout {
+                gap: 8px;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                cursor: pointer;
+            }
+        }
+        .upload {
+            
+            border-color: var(--excel-blue-color);
+            background: transparent;
+            border-radius: 8px;
+            &:hover {
+                background: var(--excel-blue-color);
+                color: #fff;
+                .blue {
+                    fill: #fff !important;
+                }
+            }
+            .button-layout {
+                gap: 8px;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                cursor: pointer;
+            }
+        }
+        button {
+            width: 100%;
+            padding: 8px;
+            .green {
+                fill: var(--excel-green-color);
+            }
+            .blue {
+                fill: var(--excel-blue-color);
+            }
+            svg {
+                width: 24px;
+                height: 24px;
+            }
+        }
+    }
+}
+
+.spinner {
+    display: flex;
+    align-items: center;
+    font-size: 14px;
+    font-weight: bold;
+    svg {
+        animation: rotate 1s linear infinite; /* Apply rotation animation */
+        width: 100%; /* Make the SVG take full size of the spinner */
+        height: 100%; /* Make the SVG take full size of the spinner */
+    }
+}
+@keyframes rotate {
+    from {
+        transform: rotate(0deg); /* Start at 0 degrees */
+    }
+    to {
+        transform: rotate(360deg); /* End at 360 degrees */
+    }
+}

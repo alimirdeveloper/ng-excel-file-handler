@@ -1,0 +1,36 @@
+button {
+    cursor: pointer;
+}
+.main-layout {
+    padding: 12px;
+    height: 100vh;
+    excel-file-handler {
+        width: 100%;
+        display: flex;
+    }
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+.table-layout {
+    width: 100%;
+    display: flex;
+    table {
+        border: 1px solid silver;
+        border-radius: 8px;
+        
+        width: 100%;
+        border-collapse: collapse;
+        th{
+            padding: 4px;
+            border: 1px solid silver;
+        }
+        td{
+            text-align: center;
+            justify-content: center;
+            align-items: center;    
+            padding: 4px;
+            border: 1px solid silver;
+        }
+    }
+}
