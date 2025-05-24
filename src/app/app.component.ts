@@ -57,7 +57,7 @@ export class AppComponent {
       name: 'Name',
       idName: 'Name',
       type: 'text',
-
+      mandatory: true,
     },
     {
       name: 'Age',
@@ -102,6 +102,13 @@ export class AppComponent {
       idName: 'observable Item',
       type: 'drop-down',
       optionsObeservable: this.testObser
+    },
+    {
+      name:'id',
+      idName:'id',
+      type:'number',
+      mandatory:true, 
+      unique:true
     }
   ]
   onDataUploaded(excelData: any[]) {

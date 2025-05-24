@@ -1,4 +1,4 @@
-import { Component, computed, EventEmitter, input, Output, output } from '@angular/core';
+import { Component, computed, EventEmitter, input, Output } from '@angular/core';
 import * as ExcelJS from 'exceljs';
 import { Observable } from 'rxjs';
 
@@ -10,21 +10,22 @@ import { Observable } from 'rxjs';
   styleUrl: './excel-file-handler.component.scss'
 })
 export class ExcelFileHandlerComponent {
-  templateName = input<string>('ExcelTemplate');
+ templateName = input<string>('ExcelTemplate');
   sheetName = input<string>('Template');
   headers = input<ExcelColumn[]>([]);
   downloadtip = input<string>('download the template and fill data, please dont change structure of the file');
   uploadtip = input<string>('upload filled template file');
   headersClassified = computed(() => {
     return this.headers().map(a => {
-      const item = new ExcelColumnClass(a.name, a.idName, a.type, a.options, a.optionsObeservable)
+      const item = new ExcelColumnClass(a.name, a.idName, a.type, a.options, a.optionsObeservable, a.mandatory, a.validationPattern,a.unique)
       return item;
     }
     );
 
   });
+  errors: { row: number, column: string, message: string }[] = [];
 
-  @Output() onDataUploaded = new EventEmitter<any[]>();
+  @Output() onDataUploaded = new EventEmitter();
 
   loading = false;
   uploading = false;
@@ -41,6 +42,8 @@ export class ExcelFileHandlerComponent {
 
     const workbook = new ExcelJS.Workbook();
     const ws = workbook.addWorksheet(this.sheetName());
+
+    this.setColumnWidths(ws);
 
     // Set headers
     const headers = this.createHeaders();
@@ -63,6 +66,28 @@ export class ExcelFileHandlerComponent {
   }
 
 
+
+  private setColumnWidths(ws: ExcelJS.Worksheet) {
+    this.headersClassified().forEach((header, index) => {
+      const column = ws.getColumn(index + 1); // Columns are 1-based in ExcelJS
+      switch (header.type) {
+        case 'text':
+          column.width = 30; // Wider for text columns
+          break;
+        case 'number':
+          column.width = 15;
+          break;
+        case 'Percentage':
+          column.width = 12;
+          break;
+        case 'drop-down':
+          column.width = 20;
+          break;
+        default:
+          column.width = 20;
+      }
+    });
+  }
 
   async getOptionsFromObservable() {
     // Create an array of Promises that resolves once each observable completes
@@ -132,7 +157,7 @@ export class ExcelFileHandlerComponent {
 
       // Define the named range for the dropdown options on the hidden sheet
       const lastRow = header.options.length;
-      const dropdownRange = `${header.name.replace(/\s+/g, '')}_Options!$B$1:$B$${lastRow}`;
+      const dropdownRange = `${header.idName.replace(/\s+/g, '')}_Options!$B$1:$B$${lastRow}`;
 
       // Apply data validation to each cell in the column
       for (let row = 2; row <= 1001; row++) {
@@ -148,32 +173,17 @@ export class ExcelFileHandlerComponent {
     }
   }
 
-  private addStyleToColumnHeaders(ws: ExcelJS.Worksheet, headers: string[]) {
-    const headerRow = ws.addRow(headers);
-
-    // Style headers
-    headerRow.eachCell((cell) => {
-      cell.fill = {
-        type: 'pattern',
-        pattern: 'solid',
-        fgColor: { argb: 'FFFFFF00' },
-        bgColor: { argb: 'FF0000FF' }
-      };
-      cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
-      cell.font = { bold: true, size: 16 };
-    });
-  }
 
   //#region upload
   onUploadClick() {
     const fileInput = document.querySelector<HTMLInputElement>('#fileInput');
+    this.errors = [];
     if (fileInput) {
       fileInput.click(); // Trigger the file input click
     }
   }
 
   onFileChange(event: Event) {
-    debugger
     const input = event.target as HTMLInputElement;
     if (input.files && input.files.length > 0) {
       const file = input.files[0];
@@ -205,35 +215,6 @@ export class ExcelFileHandlerComponent {
     reader.readAsArrayBuffer(file);
   }
 
-  private extractDataFromWorksheet(worksheet: ExcelJS.Worksheet): any[] {
-    const headers = this.headersClassified();
-    const data: any[] = [];
-
-
-    worksheet.eachRow({ includeEmpty: true }, (row, rowNumber) => {
-      if (rowNumber === 1) return; // Skip header row
-
-      const rowData: any = {};
-      headers.forEach((header, index) => {
-        const hiddenSheet = worksheet.workbook.getWorksheet(`${header.idName}_Options`);
-        let dropdownMapping: {
-          [key: string]: string;
-        } | undefined;
-        if (hiddenSheet)
-          dropdownMapping = this.getDropdownMapping(hiddenSheet);
-        const cellValue = row.getCell(index + 1).value; // Excel columns are 1-based
-        // For dropdown, replace the key with its label
-        if (header.type === 'drop-down' && dropdownMapping && dropdownMapping[cellValue?.toString() || '']) {
-          rowData[header.name] = dropdownMapping[cellValue?.toString() || '']; // Use the label instead of the key
-        } else {
-          rowData[header.name] = cellValue; // Regular mapping
-        }
-      });
-      data.push(rowData);
-    });
-    this.onDataUploaded.emit(data);
-    return data;
-  }
 
   private getDropdownMapping(hiddenSheet: ExcelJS.Worksheet): { [key: string]: string } {
     const mapping: { [key: string]: string } = {};
@@ -249,15 +230,142 @@ export class ExcelFileHandlerComponent {
     return mapping;
   }
 
+  private extractDataFromWorksheet(worksheet: ExcelJS.Worksheet): any[] {
+    const headers = this.headersClassified();
+    const data: any[] = [];
+    this.errors = []; // Reset errors array
 
+    // Object to track unique values for columns marked as unique
+    const uniqueValuesMap: { [columnName: string]: Set<string | number> } = {};
+
+    // Initialize sets for unique columns
+    headers.forEach(header => {
+      if (header.unique) {
+        uniqueValuesMap[header.name] = new Set();
+      }
+    });
+
+    worksheet.eachRow({ includeEmpty: true }, (row, rowNumber) => {
+      if (rowNumber === 1) return; // Skip header row
+
+      const rowData: any = {};
+      let isValidRow = true;
+
+      headers.forEach((header, index) => {
+        const hiddenSheet = worksheet.workbook.getWorksheet(`${header.idName}_Options`);
+        let dropdownMapping: { [key: string]: string } | undefined;
+        if (hiddenSheet) {
+          dropdownMapping = this.getDropdownMapping(hiddenSheet);
+        }
+
+        const cell = row.getCell(index + 1);
+        const cellValue = cell.value;
+
+        // Check for mandatory fields
+        if (header.mandatory && (cellValue === null || cellValue === undefined || cellValue === '')) {
+          this.errors.push({
+            row: rowNumber,
+            column: header.name,
+            message: `${header.name} is required`
+          });
+          isValidRow = false;
+          return;
+        }
+
+        // Validate against pattern if provided
+        if (cellValue && header.validationPattern && typeof cellValue === 'string') {
+          if (!header.validationPattern.test(cellValue)) {
+            this.errors.push({
+              row: rowNumber,
+              column: header.name,
+              message: `${header.name} has invalid format`
+            });
+            isValidRow = false;
+            return;
+          }
+        }
+
+        // Check for duplicate values in unique columns
+        if (header.unique && cellValue !== null && cellValue !== undefined && cellValue !== '') {
+          const stringValue = cellValue.toString();
+          if (uniqueValuesMap[header.name].has(stringValue)) {
+            this.errors.push({
+              row: rowNumber,
+              column: header.name,
+              message: `${header.name} must be unique (duplicate value found)`
+            });
+            isValidRow = false;
+            return;
+          }
+          uniqueValuesMap[header.name].add(stringValue);
+        }
+
+        // For dropdown, replace the key with its label
+        if (header.type === 'drop-down' && dropdownMapping && dropdownMapping[cellValue?.toString() || '']) {
+          rowData[header.idName] = dropdownMapping[cellValue?.toString() || ''];
+        } else {
+          rowData[header.idName] = cellValue;
+        }
+      });
+
+      if (isValidRow) {
+        data.push(rowData);
+      }
+    });
+
+    this.onDataUploaded.emit({
+      data: data,
+      errors: this.errors,
+      isValid: this.errors.length === 0
+    });
+
+    return data;
+  }
+private addStyleToColumnHeaders(ws: ExcelJS.Worksheet, headers: string[]) {
+  const headerRow = ws.addRow(headers);
+
+  // Style headers
+  headerRow.eachCell((cell, colNumber) => {
+    const header = this.headersClassified()[colNumber - 1]; // Columns are 1-based
+    
+    // Determine fill color based on properties
+    let fillColor = 'FFFFFF00'; // Yellow for normal columns
+    
+    if (header.mandatory && header.unique) {
+      fillColor = 'FF800080'; // Purple for columns that are both mandatory and unique
+    } else if (header.mandatory) {
+      fillColor = 'FFFF0000'; // Red for mandatory
+    } else if (header.unique) {
+      fillColor = 'FF0000FF'; // Blue for unique
+    }
+    
+    cell.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: fillColor },
+      bgColor: { argb: 'FF0000FF' }
+    };
+    cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+    cell.font = { bold: true, size: 16 };
+    
+    // Add comment explaining column requirements
+    let note = '';
+    if (header.mandatory) note += 'This field is required.\n';
+    if (header.unique) note += 'Values must be unique.';
+    if (note) cell.note = note.trim();
+  });
 }
 
+}
 export interface ExcelColumn {
   name: string,
   idName: string,
   type: 'text' | 'number' | 'drop-down' | 'Percentage',
   options?: { key: string; value: string }[],
-  optionsObeservable?: () => Observable<{ key: string; value: string; }[]>
+  optionsObeservable?: () => Observable<{ key: string; value: string; }[]>,
+  mandatory?: boolean,
+  validationPattern?: RegExp,
+  unique?: boolean // Add this new property for duplicate checking
 }
 
 export class ExcelColumnClass {
@@ -266,9 +374,11 @@ export class ExcelColumnClass {
     public idName: string,
     public type: 'text' | 'number' | 'drop-down' | 'Percentage',
     public options?: { key: string; value: string }[],
-    public optionsObeservable?: () => Observable<{ key: string; value: string; }[]>
+    public optionsObeservable?: () => Observable<{ key: string; value: string; }[]>,
+    public mandatory: boolean = false,
+    public validationPattern?: RegExp,
+    public unique: boolean = false // Default to false
   ) {
     this.idName = idName.replace(/\s+/g, '');
   }
-
 }
